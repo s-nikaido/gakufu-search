@@ -1255,7 +1255,7 @@ function startEditScore(scoreId) {
     if (isPdf(score.image_path)) {
       photoPreview.style.display = 'none';
       photoPlaceholder.style.display = 'block';
-      photoPlaceholder.textContent = '登録済みのPDFがあります（変更する場合のみ選び直してください）';
+      photoPlaceholder.innerHTML = '<span style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:6px;background:var(--accent-bg);color:var(--accent);font-size:10px;font-weight:500;vertical-align:middle;margin-right:8px;">PDF</span>登録済みのPDFがあります（変更する場合のみ選び直してください）';
     } else {
       photoPreview.src = score.image_path;
       photoPreview.style.display = 'block';
@@ -1389,8 +1389,7 @@ aiReadBtn.addEventListener('click', async () => {
     alert('先に「設定」画面でGemini APIキーを保存してください');
     return;
   }
-  const targetFile = selectedFiles[0];
-  if (!targetFile) {
+  if (selectedFiles.length === 0 && !existingImagePath) {
     alert('写真またはPDFを選択してから読み取ってください（複数枚選んでいる場合は1枚目のみ読み取ります）');
     return;
   }
@@ -1399,8 +1398,18 @@ aiReadBtn.addEventListener('click', async () => {
   aiReadStatus.style.display = 'block';
   aiReadStatus.textContent = '読み取り中…';
   try {
+    let base64, mimeType;
+    if (selectedFiles.length > 0) {
+      const targetFile = selectedFiles[0];
+      base64 = await fileToBase64(targetFile);
+      mimeType = targetFile.type;
+    } else {
+      const res = await fetch(existingImagePath);
+      const blob = await res.blob();
+      mimeType = blob.type || (isPdf(existingImagePath) ? 'application/pdf' : 'image/jpeg');
+      base64 = await fileToBase64(new File([blob], 'existing', { type: mimeType }));
+    }
     const model = localStorage.getItem('gemini_model_name') || 'gemini-3.5-flash';
-    const base64 = await fileToBase64(targetFile);
     const prompt = '紙の楽譜の表紙・1ページ目です（画像またはPDF）。以下をJSON形式のみで答えてください（前後に説明文は不要）。分からない項目は空文字にしてください。\n{"title": "曲名", "composer": "作曲家名", "part": "パート名（楽器名やスコア全体など）"}';
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST',
