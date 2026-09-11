@@ -195,6 +195,31 @@
     padding: 2px 4px;
   }
 
+  .concert-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+  }
+  .concert-row:last-child { border-bottom: none; }
+  .concert-row .date { color: var(--text-muted); font-size: 12px; margin-left: 6px; }
+  .concert-row .count { color: var(--text-muted); font-size: 12px; margin-left: 6px; }
+  .concert-row .actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .concert-row .actions button {
+    border: none;
+    background: none;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px 4px;
+  }
+  .concert-row .actions button.delete { color: var(--danger); }
+  .concert-row.editing { flex-direction: column; align-items: stretch; gap: 8px; }
+  .concert-row.editing .edit-fields { display: flex; gap: 6px; }
+
   .modal-overlay {
     display: none;
     position: fixed;
@@ -317,11 +342,21 @@
         </div>
         <button class="primary" id="save-btn">保存</button>
       </section>
+
+      <section id="view-concerts" class="view">
+        <div style="display:flex; gap:6px; margin-bottom:16px;">
+          <input type="text" id="concert-new-name" placeholder="演奏会名" style="flex:2;">
+          <input type="date" id="concert-new-date" style="flex:1;">
+          <button type="button" id="concert-new-add-btn" style="width:auto; padding:0 12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); color:var(--text); font-size:13px; cursor:pointer;">追加</button>
+        </div>
+        <div id="concert-master-list"></div>
+      </section>
     </main>
 
     <nav class="tabs">
       <button id="tab-search" class="active">検索</button>
       <button id="tab-register">登録</button>
+      <button id="tab-concerts">演奏会</button>
     </nav>
   </div>
 </div>
@@ -444,6 +479,25 @@ async function deletePerformance(performanceId) {
   db.performances = db.performances.filter(p => p.id !== performanceId);
 }
 
+async function updateConcert(concertId, { name, date }) {
+  const payload = { name: name.trim(), concert_date: date || null };
+  const { error } = await sb.from('concerts').update(payload).eq('id', concertId);
+  if (error) { alert('演奏会の更新に失敗しました：' + error.message); return; }
+  const concert = db.concerts.find(c => c.id === concertId);
+  if (concert) Object.assign(concert, payload);
+}
+
+async function deleteConcert(concertId) {
+  const { error } = await sb.from('concerts').delete().eq('id', concertId);
+  if (error) { alert('演奏会の削除に失敗しました：' + error.message); return; }
+  db.concerts = db.concerts.filter(c => c.id !== concertId);
+  db.performances = db.performances.filter(p => p.concert_id !== concertId);
+}
+
+function performanceCountForConcert(concertId) {
+  return db.performances.filter(p => p.concert_id === concertId).length;
+}
+
 async function deleteScore(scoreId) {
   const score = db.scores.find(s => s.id === scoreId);
   if (!score) return;
@@ -493,19 +547,24 @@ async function uploadFile(file) {
 // ---- タブ切り替え ----
 const tabSearch = document.getElementById('tab-search');
 const tabRegister = document.getElementById('tab-register');
+const tabConcerts = document.getElementById('tab-concerts');
 const viewSearch = document.getElementById('view-search');
 const viewRegister = document.getElementById('view-register');
+const viewConcerts = document.getElementById('view-concerts');
 
 function showView(name) {
-  const isSearch = name === 'search';
-  viewSearch.classList.toggle('active', isSearch);
-  viewRegister.classList.toggle('active', !isSearch);
-  tabSearch.classList.toggle('active', isSearch);
-  tabRegister.classList.toggle('active', !isSearch);
-  if (isSearch) renderResults();
+  viewSearch.classList.toggle('active', name === 'search');
+  viewRegister.classList.toggle('active', name === 'register');
+  viewConcerts.classList.toggle('active', name === 'concerts');
+  tabSearch.classList.toggle('active', name === 'search');
+  tabRegister.classList.toggle('active', name === 'register');
+  tabConcerts.classList.toggle('active', name === 'concerts');
+  if (name === 'search') renderResults();
+  if (name === 'concerts') renderConcertMasterList();
 }
 tabSearch.addEventListener('click', () => showView('search'));
 tabRegister.addEventListener('click', () => { resetForm(); showView('register'); });
+tabConcerts.addEventListener('click', () => showView('concerts'));
 
 // ---- 検索画面 ----
 const searchInput = document.getElementById('search-input');
@@ -714,6 +773,86 @@ function renderConcertOptions() {
     db.concerts.map(c => `<option value="${c.id}">${escapeHtml(c.name)}${c.concert_date ? '（' + escapeHtml(c.concert_date) + '）' : ''}</option>`).join('');
   concertFilterSelect.value = currentValue;
 }
+
+// ---- 演奏会マスタ管理画面 ----
+const concertMasterListEl = document.getElementById('concert-master-list');
+const concertNewNameInput = document.getElementById('concert-new-name');
+const concertNewDateInput = document.getElementById('concert-new-date');
+
+function renderConcertMasterList() {
+  concertMasterListEl.innerHTML = '';
+  if (db.concerts.length === 0) {
+    concertMasterListEl.innerHTML = '<div class="empty">登録された演奏会がありません</div>';
+    return;
+  }
+  const sorted = [...db.concerts].sort((a, b) => (b.concert_date || '').localeCompare(a.concert_date || ''));
+  sorted.forEach(c => {
+    const row = document.createElement('div');
+    row.className = 'concert-row';
+    row.innerHTML = `
+      <span>${escapeHtml(c.name)}${c.concert_date ? `<span class="date">${escapeHtml(c.concert_date)}</span>` : ''}<span class="count">・ ${performanceCountForConcert(c.id)}件で使用中</span></span>
+      <div class="actions">
+        <button type="button" class="edit">編集</button>
+        <button type="button" class="delete">削除</button>
+      </div>
+    `;
+    row.querySelector('.edit').addEventListener('click', () => startEditConcert(c.id));
+    row.querySelector('.delete').addEventListener('click', () => {
+      const count = performanceCountForConcert(c.id);
+      const msg = count > 0
+        ? `この演奏会は${count}件の楽譜に紐付いています。削除するとその紐付けも消えます。削除しますか？`
+        : 'この演奏会を削除しますか？';
+      if (confirm(msg)) {
+        deleteConcert(c.id).then(() => {
+          renderConcertMasterList();
+          renderConcertOptions();
+          renderResults();
+        });
+      }
+    });
+    concertMasterListEl.appendChild(row);
+  });
+}
+
+function startEditConcert(concertId) {
+  const concert = db.concerts.find(c => c.id === concertId);
+  if (!concert) return;
+  // 該当行を編集フォームに差し替え
+  const target = [...concertMasterListEl.children][db.concerts
+    .slice()
+    .sort((a, b) => (b.concert_date || '').localeCompare(a.concert_date || ''))
+    .findIndex(c => c.id === concertId)];
+  target.className = 'concert-row editing';
+  target.innerHTML = `
+    <div class="edit-fields">
+      <input type="text" value="${escapeHtml(concert.name)}" style="flex:2;">
+      <input type="date" value="${concert.concert_date || ''}" style="flex:1;">
+    </div>
+    <div class="actions" style="justify-content:flex-end;">
+      <button type="button" class="save">保存</button>
+      <button type="button" class="cancel">キャンセル</button>
+    </div>
+  `;
+  const [nameInput, dateInput] = target.querySelectorAll('input');
+  target.querySelector('.save').addEventListener('click', async () => {
+    if (!nameInput.value.trim()) { nameInput.focus(); return; }
+    await updateConcert(concertId, { name: nameInput.value, date: dateInput.value });
+    renderConcertMasterList();
+    renderConcertOptions();
+    renderResults();
+  });
+  target.querySelector('.cancel').addEventListener('click', renderConcertMasterList);
+}
+
+document.getElementById('concert-new-add-btn').addEventListener('click', async () => {
+  const name = concertNewNameInput.value.trim();
+  if (!name) { concertNewNameInput.focus(); return; }
+  await addOrGetConcert({ name, date: concertNewDateInput.value });
+  concertNewNameInput.value = '';
+  concertNewDateInput.value = '';
+  renderConcertMasterList();
+  renderConcertOptions();
+});
 
 function startEditScore(scoreId) {
   const score = db.scores.find(s => s.id === scoreId);
