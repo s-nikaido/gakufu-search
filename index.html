@@ -271,6 +271,9 @@
       <section id="view-search" class="view active">
         <div class="field">
           <input type="text" id="search-input" placeholder="曲名・作曲家・パートで検索">
+          <select id="concert-filter-select" style="display:none;">
+            <option value="">演奏会を選択</option>
+          </select>
         </div>
         <div class="chip-row" id="filter-chips"></div>
         <div id="results"></div>
@@ -397,6 +400,15 @@ function concertById(concertId) {
   return db.concerts.find(c => c.id === concertId) || null;
 }
 
+function latestConcertNameForScore(scoreId) {
+  const concerts = performancesForScore(scoreId)
+    .map(p => concertById(p.concert_id))
+    .filter(Boolean);
+  if (concerts.length === 0) return null;
+  const dated = concerts.filter(c => c.concert_date).sort((a, b) => b.concert_date.localeCompare(a.concert_date));
+  return (dated[0] || concerts[0]).name;
+}
+
 function findConcertByName(name) {
   const norm = name.trim();
   if (!norm) return null;
@@ -497,6 +509,7 @@ tabRegister.addEventListener('click', () => { resetForm(); showView('register');
 
 // ---- 検索画面 ----
 const searchInput = document.getElementById('search-input');
+const concertFilterSelect = document.getElementById('concert-filter-select');
 const resultsEl = document.getElementById('results');
 const filterChipsEl = document.getElementById('filter-chips');
 const FILTERS = ['すべて', '作曲家', 'パート', '演奏会'];
@@ -509,25 +522,33 @@ FILTERS.forEach(f => {
   chip.addEventListener('click', () => {
     activeFilter = f;
     [...filterChipsEl.children].forEach(c => c.classList.toggle('active', c.textContent === f));
+    const isConcert = activeFilter === '演奏会';
+    searchInput.style.display = isConcert ? 'none' : '';
+    concertFilterSelect.style.display = isConcert ? '' : 'none';
     renderResults();
   });
   filterChipsEl.appendChild(chip);
 });
 
+concertFilterSelect.addEventListener('change', renderResults);
+
 function matches(work, scores, query) {
+  if (activeFilter === '演奏会') {
+    const concertId = concertFilterSelect.value;
+    if (!concertId) return true;
+    return scores.some(s => performancesForScore(s.id).some(p => p.concert_id === concertId));
+  }
   if (!query) return true;
   const q = query.toLowerCase();
   const fields = [];
-  const concertNames = scores.flatMap(s => performancesForScore(s.id).map(p => concertById(p.concert_id)?.name || ''));
   if (activeFilter === 'すべて') {
+    const concertNames = scores.flatMap(s => performancesForScore(s.id).map(p => concertById(p.concert_id)?.name || ''));
     fields.push(work.title, work.composer,
       ...scores.map(s => s.part_name), ...concertNames);
   } else if (activeFilter === '作曲家') {
     fields.push(work.composer);
   } else if (activeFilter === 'パート') {
     fields.push(...scores.map(s => s.part_name));
-  } else if (activeFilter === '演奏会') {
-    fields.push(...concertNames);
   }
   return fields.some(f => (f || '').toLowerCase().includes(q));
 }
@@ -571,7 +592,7 @@ function renderResults() {
       row.innerHTML = `
         ${thumbHtml}
         <div class="info">
-          <span class="part">${escapeHtml(s.part_name)}${performancesForScore(s.id).length ? `<span class="loc"> ・ 演奏会${performancesForScore(s.id).length}件</span>` : ''}</span>
+          <span class="part">${escapeHtml(s.part_name)}${latestConcertNameForScore(s.id) ? `<span class="loc"> ・ 直近: ${escapeHtml(latestConcertNameForScore(s.id))}</span>` : ''}</span>
         </div>
         <div class="actions">
           <button class="edit" type="button">編集</button>
@@ -687,6 +708,11 @@ document.getElementById('performance-add-btn').addEventListener('click', async (
 function renderConcertOptions() {
   const datalist = document.getElementById('concert-options');
   datalist.innerHTML = db.concerts.map(c => `<option value="${escapeHtml(c.name)}">`).join('');
+
+  const currentValue = concertFilterSelect.value;
+  concertFilterSelect.innerHTML = '<option value="">演奏会を選択</option>' +
+    db.concerts.map(c => `<option value="${c.id}">${escapeHtml(c.name)}${c.concert_date ? '（' + escapeHtml(c.concert_date) + '）' : ''}</option>`).join('');
+  concertFilterSelect.value = currentValue;
 }
 
 function startEditScore(scoreId) {
