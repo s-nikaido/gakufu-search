@@ -368,6 +368,7 @@
           <button type="button" data-view="composers">作曲家</button>
           <button type="button" data-view="parts">パート</button>
           <div class="menu-divider"></div>
+          <button type="button" data-view="settings">設定</button>
           <button type="button" id="logout-btn">ログアウト</button>
         </div>
       </div>
@@ -390,6 +391,8 @@
           <img id="photo-preview" style="display:none">
           <input type="file" id="photo-file" accept="image/*,application/pdf" multiple>
         </label>
+        <button type="button" id="ai-read-btn" style="width:100%; margin-bottom:16px; padding:9px; border:1px solid var(--accent); border-radius:var(--radius); background:none; color:var(--accent); font-size:13px; cursor:pointer;">AIで読み取る（曲名・作曲家・パート）</button>
+        <div class="hint" id="ai-read-status" style="display:none;"></div>
 
         <div class="field">
           <label>曲名 *</label>
@@ -454,6 +457,19 @@
           <button type="button" id="part-new-add-btn" style="width:auto; padding:0 12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); color:var(--text); font-size:13px; cursor:pointer;">追加</button>
         </div>
         <div id="part-master-list"></div>
+      </section>
+
+      <section id="view-settings" class="view">
+        <div class="field">
+          <label>Gemini APIキー</label>
+          <input type="password" id="gemini-api-key" autocomplete="off">
+          <div class="hint">この端末のブラウザにのみ保存されます。<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>で取得できます。</div>
+        </div>
+        <div class="field">
+          <label>モデル名</label>
+          <input type="text" id="gemini-model-name" placeholder="gemini-2.0-flash">
+        </div>
+        <button class="primary" id="gemini-settings-save-btn">保存</button>
       </section>
     </main>
 
@@ -695,6 +711,7 @@ const viewRegister = document.getElementById('view-register');
 const viewConcerts = document.getElementById('view-concerts');
 const viewComposers = document.getElementById('view-composers');
 const viewParts = document.getElementById('view-parts');
+const viewSettings = document.getElementById('view-settings');
 const menuBtn = document.getElementById('menu-btn');
 const menuDropdown = document.getElementById('menu-dropdown');
 
@@ -704,10 +721,12 @@ function showView(name) {
   viewConcerts.classList.toggle('active', name === 'concerts');
   viewComposers.classList.toggle('active', name === 'composers');
   viewParts.classList.toggle('active', name === 'parts');
+  viewSettings.classList.toggle('active', name === 'settings');
   if (name === 'search') renderResults();
   if (name === 'concerts') renderConcertMasterList();
   if (name === 'composers') renderComposerMasterList();
   if (name === 'parts') renderPartMasterList();
+  if (name === 'settings') loadGeminiSettingsIntoForm();
 }
 
 menuBtn.addEventListener('click', (e) => {
@@ -1341,6 +1360,84 @@ async function imagesToPdfFile(files) {
   return new File([blob], 'scan.pdf', { type: 'application/pdf' });
 }
 
+// ---- Gemini設定（この端末のブラウザにのみ保存） ----
+const geminiApiKeyInput = document.getElementById('gemini-api-key');
+const geminiModelNameInput = document.getElementById('gemini-model-name');
+
+function loadGeminiSettingsIntoForm() {
+  geminiApiKeyInput.value = localStorage.getItem('gemini_api_key') || '';
+  geminiModelNameInput.value = localStorage.getItem('gemini_model_name') || 'gemini-2.0-flash';
+}
+
+document.getElementById('gemini-settings-save-btn').addEventListener('click', () => {
+  localStorage.setItem('gemini_api_key', geminiApiKeyInput.value.trim());
+  localStorage.setItem('gemini_model_name', geminiModelNameInput.value.trim() || 'gemini-2.0-flash');
+  alert('保存しました');
+});
+
+// ---- AIで読み取る ----
+const aiReadBtn = document.getElementById('ai-read-btn');
+const aiReadStatus = document.getElementById('ai-read-status');
+
+function fileToBase64(file) {
+  return fileToDataUrl(file).then(dataUrl => dataUrl.split(',')[1]);
+}
+
+aiReadBtn.addEventListener('click', async () => {
+  const apiKey = localStorage.getItem('gemini_api_key');
+  if (!apiKey) {
+    alert('先に「設定」画面でGemini APIキーを保存してください');
+    return;
+  }
+  const targetFile = selectedFiles[0];
+  if (!targetFile) {
+    alert('写真またはPDFを選択してから読み取ってください（複数枚選んでいる場合は1枚目のみ読み取ります）');
+    return;
+  }
+
+  aiReadBtn.disabled = true;
+  aiReadStatus.style.display = 'block';
+  aiReadStatus.textContent = '読み取り中…';
+  try {
+    const model = localStorage.getItem('gemini_model_name') || 'gemini-2.0-flash';
+    const base64 = await fileToBase64(targetFile);
+    const prompt = '紙の楽譜の表紙・1ページ目です（画像またはPDF）。以下をJSON形式のみで答えてください（前後に説明文は不要）。分からない項目は空文字にしてください。\n{"title": "曲名", "composer": "作曲家名", "part": "パート名（楽器名やスコア全体など）"}';
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { inline_data: { mime_type: targetFile.type, data: base64 } },
+            { text: prompt },
+          ],
+        }],
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error?.message || 'APIエラー');
+    }
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('読み取り結果を解析できませんでした');
+    const result = JSON.parse(jsonMatch[0]);
+
+    let filled = [];
+    if (result.title && !fTitle.value.trim()) { fTitle.value = result.title; fTitle.dispatchEvent(new Event('input', { bubbles: true })); filled.push('曲名'); }
+    if (result.composer && !fComposer.value.trim()) { fComposer.value = result.composer; filled.push('作曲家'); }
+    if (result.part && !fPart.value.trim()) { fPart.value = result.part; filled.push('パート名'); }
+
+    aiReadStatus.textContent = filled.length > 0
+      ? `読み取りました（${filled.join('・')}）。内容を確認・修正してください。`
+      : '読み取れましたが、既に入力済みの項目は上書きしていません。';
+  } catch (err) {
+    aiReadStatus.textContent = '読み取りに失敗しました：' + err.message;
+  } finally {
+    aiReadBtn.disabled = false;
+  }
+});
+
 function resetForm() {
   fTitle.value = '';
   fComposer.value = '';
@@ -1361,6 +1458,7 @@ function resetForm() {
   performanceSection.style.display = 'none';
   performanceNameInput.value = '';
   performanceDateInput.value = '';
+  aiReadStatus.style.display = 'none';
 }
 
 document.getElementById('save-btn').addEventListener('click', async () => {
