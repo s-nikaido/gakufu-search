@@ -1417,7 +1417,7 @@ aiReadBtn.addEventListener('click', async () => {
       body: JSON.stringify({
         contents: [{
           parts: [
-            { inline_data: { mime_type: targetFile.type, data: base64 } },
+            { inline_data: { mime_type: mimeType, data: base64 } },
             { text: prompt },
           ],
         }],
