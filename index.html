@@ -324,6 +324,8 @@
           <button type="button" data-view="search">検索</button>
           <button type="button" data-view="register">登録</button>
           <button type="button" data-view="concerts">演奏会</button>
+          <button type="button" data-view="composers">作曲家</button>
+          <button type="button" data-view="parts">パート</button>
           <div class="menu-divider"></div>
           <button type="button" id="logout-btn">ログアウト</button>
         </div>
@@ -336,6 +338,12 @@
           <input type="text" id="search-input" placeholder="曲名・作曲家・パートで検索">
           <select id="concert-filter-select" style="display:none;">
             <option value="">演奏会を選択</option>
+          </select>
+          <select id="composer-filter-select" style="display:none;">
+            <option value="">作曲家を選択</option>
+          </select>
+          <select id="part-filter-select" style="display:none;">
+            <option value="">パートを選択</option>
           </select>
         </div>
         <div class="chip-row" id="filter-chips"></div>
@@ -357,11 +365,13 @@
         </div>
         <div class="field">
           <label>作曲家</label>
-          <input type="text" id="f-composer">
+          <input type="text" id="f-composer" list="composer-options">
+          <datalist id="composer-options"></datalist>
         </div>
         <div class="field" style="border-top:1px solid var(--border); padding-top:12px;">
           <label>パート名 *</label>
-          <input type="text" id="f-part">
+          <input type="text" id="f-part" list="part-options">
+          <datalist id="part-options"></datalist>
           <div class="error" id="part-error" style="display:none">パート名を入力してください</div>
         </div>
         <div class="field">
@@ -389,6 +399,22 @@
         </div>
         <div id="concert-master-list"></div>
       </section>
+
+      <section id="view-composers" class="view">
+        <div style="display:flex; gap:6px; margin-bottom:16px;">
+          <input type="text" id="composer-new-name" placeholder="作曲家名" style="flex:1;">
+          <button type="button" id="composer-new-add-btn" style="width:auto; padding:0 12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); color:var(--text); font-size:13px; cursor:pointer;">追加</button>
+        </div>
+        <div id="composer-master-list"></div>
+      </section>
+
+      <section id="view-parts" class="view">
+        <div style="display:flex; gap:6px; margin-bottom:16px;">
+          <input type="text" id="part-new-name" placeholder="パート名" style="flex:1;">
+          <button type="button" id="part-new-add-btn" style="width:auto; padding:0 12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); color:var(--text); font-size:13px; cursor:pointer;">追加</button>
+        </div>
+        <div id="part-master-list"></div>
+      </section>
     </main>
 
   </div>
@@ -408,15 +434,17 @@ const sb = window.supabase.createClient(
 );
 
 // ---- データ層（Supabaseのworks・scoresテーブルを利用） ----
-let db = { works: [], scores: [], performances: [], concerts: [] };
+let db = { works: [], scores: [], performances: [], concerts: [], composers: [], parts: [] };
 
 async function loadData() {
   const { data: works, error: worksError } = await sb.from('works').select('*').order('created_at');
   const { data: scores, error: scoresError } = await sb.from('scores').select('*').order('created_at');
   const { data: concerts, error: concertsError } = await sb.from('concerts').select('*').order('concert_date', { ascending: false });
   const { data: performances, error: performancesError } = await sb.from('performances').select('*').order('created_at', { ascending: false });
-  if (worksError || scoresError || concertsError || performancesError) {
-    console.error(worksError, scoresError, concertsError, performancesError);
+  const { data: composers, error: composersError } = await sb.from('composers').select('*').order('name');
+  const { data: parts, error: partsError } = await sb.from('parts').select('*').order('name');
+  if (worksError || scoresError || concertsError || performancesError || composersError || partsError) {
+    console.error(worksError, scoresError, concertsError, performancesError, composersError, partsError);
     resultsEl.innerHTML = '<div class="empty">データの取得に失敗しました</div>';
     return;
   }
@@ -424,6 +452,8 @@ async function loadData() {
   db.scores = scores;
   db.concerts = concerts;
   db.performances = performances;
+  db.composers = composers;
+  db.parts = parts;
 }
 
 function findWorkByTitle(title) {
@@ -432,12 +462,49 @@ function findWorkByTitle(title) {
   return db.works.find(w => w.title.trim() === norm) || null;
 }
 
+// ---- 名前だけを持つマスタ（作曲家・パート）の共通処理 ----
+function makeSimpleMaster(table) {
+  return {
+    table,
+    byId(id) {
+      return db[table].find(x => x.id === id) || null;
+    },
+    findByName(name) {
+      const norm = (name || '').trim();
+      if (!norm) return null;
+      return db[table].find(x => x.name.trim() === norm) || null;
+    },
+    async addOrGet(name) {
+      const existing = this.findByName(name);
+      if (existing) return existing;
+      const { data, error } = await sb.from(table).insert({ name: name.trim() }).select().single();
+      if (error) { alert('保存に失敗しました：' + error.message); throw error; }
+      db[table].push(data);
+      return data;
+    },
+    async update(id, name) {
+      const { error } = await sb.from(table).update({ name: name.trim() }).eq('id', id);
+      if (error) { alert('更新に失敗しました：' + error.message); return; }
+      const item = this.byId(id);
+      if (item) item.name = name.trim();
+    },
+    async remove(id) {
+      const { error } = await sb.from(table).delete().eq('id', id);
+      if (error) { alert('削除に失敗しました：' + error.message); return; }
+      db[table] = db[table].filter(x => x.id !== id);
+    },
+  };
+}
+const composerMaster = makeSimpleMaster('composers');
+const partMaster = makeSimpleMaster('parts');
+
 async function addOrGetWork({ title, composer }) {
   const existing = findWorkByTitle(title);
   if (existing) return existing;
+  const composerRow = await composerMaster.addOrGet(composer);
   const { data, error } = await sb.from('works').insert({
     title: title.trim(),
-    composer: composer.trim(),
+    composer_id: composerRow.id,
   }).select().single();
   if (error) { alert('楽曲の保存に失敗しました：' + error.message); throw error; }
   db.works.push(data);
@@ -445,9 +512,10 @@ async function addOrGetWork({ title, composer }) {
 }
 
 async function addScore({ workId, partName, memo, imagePath }) {
+  const partRow = await partMaster.addOrGet(partName);
   const { data, error } = await sb.from('scores').insert({
     work_id: workId,
-    part_name: partName.trim(),
+    part_id: partRow.id,
     memo: memo.trim(),
     image_path: imagePath || null,
   }).select().single();
@@ -546,9 +614,10 @@ async function deleteScore(scoreId) {
 }
 
 async function updateWorkFields(workId, { title, composer }) {
+  const composerRow = await composerMaster.addOrGet(composer);
   const payload = {
     title: title.trim(),
-    composer: composer.trim(),
+    composer_id: composerRow.id,
   };
   const { error } = await sb.from('works').update(payload).eq('id', workId);
   if (error) { alert('楽曲の更新に失敗しました：' + error.message); return; }
@@ -557,8 +626,9 @@ async function updateWorkFields(workId, { title, composer }) {
 }
 
 async function updateScore(scoreId, { partName, memo, imagePath }) {
+  const partRow = await partMaster.addOrGet(partName);
   const payload = {
-    part_name: partName.trim(),
+    part_id: partRow.id,
     memo: memo.trim(),
   };
   if (imagePath) payload.image_path = imagePath;
@@ -581,6 +651,8 @@ async function uploadFile(file) {
 const viewSearch = document.getElementById('view-search');
 const viewRegister = document.getElementById('view-register');
 const viewConcerts = document.getElementById('view-concerts');
+const viewComposers = document.getElementById('view-composers');
+const viewParts = document.getElementById('view-parts');
 const menuBtn = document.getElementById('menu-btn');
 const menuDropdown = document.getElementById('menu-dropdown');
 
@@ -588,8 +660,12 @@ function showView(name) {
   viewSearch.classList.toggle('active', name === 'search');
   viewRegister.classList.toggle('active', name === 'register');
   viewConcerts.classList.toggle('active', name === 'concerts');
+  viewComposers.classList.toggle('active', name === 'composers');
+  viewParts.classList.toggle('active', name === 'parts');
   if (name === 'search') renderResults();
   if (name === 'concerts') renderConcertMasterList();
+  if (name === 'composers') renderComposerMasterList();
+  if (name === 'parts') renderPartMasterList();
 }
 
 menuBtn.addEventListener('click', (e) => {
@@ -610,10 +686,13 @@ menuDropdown.querySelectorAll('button[data-view]').forEach(btn => {
 // ---- 検索画面 ----
 const searchInput = document.getElementById('search-input');
 const concertFilterSelect = document.getElementById('concert-filter-select');
+const composerFilterSelect = document.getElementById('composer-filter-select');
+const partFilterSelect = document.getElementById('part-filter-select');
 const resultsEl = document.getElementById('results');
 const filterChipsEl = document.getElementById('filter-chips');
 const FILTERS = ['すべて', '作曲家', 'パート', '演奏会'];
 let activeFilter = 'すべて';
+const FILTER_SELECTS = { '演奏会': concertFilterSelect, '作曲家': composerFilterSelect, 'パート': partFilterSelect };
 
 FILTERS.forEach(f => {
   const chip = document.createElement('span');
@@ -622,15 +701,18 @@ FILTERS.forEach(f => {
   chip.addEventListener('click', () => {
     activeFilter = f;
     [...filterChipsEl.children].forEach(c => c.classList.toggle('active', c.textContent === f));
-    const isConcert = activeFilter === '演奏会';
-    searchInput.style.display = isConcert ? 'none' : '';
-    concertFilterSelect.style.display = isConcert ? '' : 'none';
+    const dropdown = FILTER_SELECTS[activeFilter];
+    searchInput.style.display = dropdown ? 'none' : '';
+    Object.values(FILTER_SELECTS).forEach(sel => sel.style.display = 'none');
+    if (dropdown) dropdown.style.display = '';
     renderResults();
   });
   filterChipsEl.appendChild(chip);
 });
 
 concertFilterSelect.addEventListener('change', renderResults);
+composerFilterSelect.addEventListener('change', renderResults);
+partFilterSelect.addEventListener('change', renderResults);
 
 function matches(work, scores, query) {
   if (activeFilter === '演奏会') {
@@ -638,18 +720,21 @@ function matches(work, scores, query) {
     if (!concertId) return true;
     return scores.some(s => performancesForScore(s.id).some(p => p.concert_id === concertId));
   }
+  if (activeFilter === '作曲家') {
+    const composerId = composerFilterSelect.value;
+    if (!composerId) return true;
+    return work.composer_id === composerId;
+  }
+  if (activeFilter === 'パート') {
+    const partId = partFilterSelect.value;
+    if (!partId) return true;
+    return scores.some(s => s.part_id === partId);
+  }
   if (!query) return true;
   const q = query.toLowerCase();
-  const fields = [];
-  if (activeFilter === 'すべて') {
-    const concertNames = scores.flatMap(s => performancesForScore(s.id).map(p => concertById(p.concert_id)?.name || ''));
-    fields.push(work.title, work.composer,
-      ...scores.map(s => s.part_name), ...concertNames);
-  } else if (activeFilter === '作曲家') {
-    fields.push(work.composer);
-  } else if (activeFilter === 'パート') {
-    fields.push(...scores.map(s => s.part_name));
-  }
+  const concertNames = scores.flatMap(s => performancesForScore(s.id).map(p => concertById(p.concert_id)?.name || ''));
+  const fields = [work.title, composerMaster.byId(work.composer_id)?.name,
+    ...scores.map(s => partMaster.byId(s.part_id)?.name), ...concertNames];
   return fields.some(f => (f || '').toLowerCase().includes(q));
 }
 
@@ -674,7 +759,7 @@ function renderResults() {
     header.innerHTML = `
       <div>
         <p class="title">${escapeHtml(work.title)}</p>
-        <p class="sub">${escapeHtml(work.composer || '作曲家未設定')}</p>
+        <p class="sub">${escapeHtml(composerMaster.byId(work.composer_id)?.name || '作曲家未設定')}</p>
       </div>
       <span class="count">${scores.length}件</span>
     `;
@@ -692,7 +777,7 @@ function renderResults() {
       row.innerHTML = `
         ${thumbHtml}
         <div class="info">
-          <span class="part">${escapeHtml(s.part_name)}${latestConcertNameForScore(s.id) ? `<span class="loc"> ・ 直近: ${escapeHtml(latestConcertNameForScore(s.id))}</span>` : ''}</span>
+          <span class="part">${escapeHtml(partMaster.byId(s.part_id)?.name || 'パート未設定')}${latestConcertNameForScore(s.id) ? `<span class="loc"> ・ 直近: ${escapeHtml(latestConcertNameForScore(s.id))}</span>` : ''}</span>
         </div>
         <div class="actions">
           <button class="edit" type="button">編集</button>
@@ -895,6 +980,112 @@ document.getElementById('concert-new-add-btn').addEventListener('click', async (
   renderConcertOptions();
 });
 
+// ---- 作曲家・パートの候補更新 ----
+function renderSimpleMasterOptions(datalistId, selectEl, selectDefaultLabel, table) {
+  const datalist = document.getElementById(datalistId);
+  if (datalist) datalist.innerHTML = db[table].map(x => `<option value="${escapeHtml(x.name)}">`).join('');
+  if (selectEl) {
+    const currentValue = selectEl.value;
+    selectEl.innerHTML = `<option value="">${selectDefaultLabel}</option>` +
+      db[table].map(x => `<option value="${x.id}">${escapeHtml(x.name)}</option>`).join('');
+    selectEl.value = currentValue;
+  }
+}
+function renderComposerOptions() {
+  renderSimpleMasterOptions('composer-options', composerFilterSelect, '作曲家を選択', 'composers');
+}
+function renderPartOptions() {
+  renderSimpleMasterOptions('part-options', partFilterSelect, 'パートを選択', 'parts');
+}
+
+// ---- 作曲家・パートのマスタ管理画面（共通処理） ----
+function renderSimpleMasterList(containerEl, table, master, countFn, refreshOptionsFn) {
+  containerEl.innerHTML = '';
+  if (db[table].length === 0) {
+    containerEl.innerHTML = '<div class="empty">登録されたデータがありません</div>';
+    return;
+  }
+  const sorted = [...db[table]].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  sorted.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'concert-row';
+    row.innerHTML = `
+      <span>${escapeHtml(item.name)}<span class="count">・ ${countFn(item.id)}件で使用中</span></span>
+      <div class="actions">
+        <button type="button" class="edit">編集</button>
+        <button type="button" class="delete">削除</button>
+      </div>
+    `;
+    row.querySelector('.edit').addEventListener('click', () => {
+      row.className = 'concert-row editing';
+      row.innerHTML = `
+        <div class="edit-fields">
+          <input type="text" value="${escapeHtml(item.name)}" style="flex:1;">
+        </div>
+        <div class="actions" style="justify-content:flex-end;">
+          <button type="button" class="save">保存</button>
+          <button type="button" class="cancel">キャンセル</button>
+        </div>
+      `;
+      const nameInput = row.querySelector('input');
+      row.querySelector('.save').addEventListener('click', async () => {
+        if (!nameInput.value.trim()) { nameInput.focus(); return; }
+        await master.update(item.id, nameInput.value);
+        renderSimpleMasterList(containerEl, table, master, countFn, refreshOptionsFn);
+        refreshOptionsFn();
+        renderResults();
+      });
+      row.querySelector('.cancel').addEventListener('click', () => renderSimpleMasterList(containerEl, table, master, countFn, refreshOptionsFn));
+    });
+    row.querySelector('.delete').addEventListener('click', () => {
+      const count = countFn(item.id);
+      const msg = count > 0
+        ? `このデータは${count}件で使用されています。削除すると紐付けが解除されます（登録済みの楽譜・楽曲自体は削除されません）。削除しますか？`
+        : '削除しますか？';
+      if (confirm(msg)) {
+        master.remove(item.id).then(() => {
+          if (table === 'composers') db.works.forEach(w => { if (w.composer_id === item.id) w.composer_id = null; });
+          if (table === 'parts') db.scores.forEach(s => { if (s.part_id === item.id) s.part_id = null; });
+          renderSimpleMasterList(containerEl, table, master, countFn, refreshOptionsFn);
+          refreshOptionsFn();
+          renderResults();
+        });
+      }
+    });
+    containerEl.appendChild(row);
+  });
+}
+
+const composerMasterListEl = document.getElementById('composer-master-list');
+const composerNewNameInput = document.getElementById('composer-new-name');
+function renderComposerMasterList() {
+  renderSimpleMasterList(composerMasterListEl, 'composers', composerMaster,
+    id => db.works.filter(w => w.composer_id === id).length, renderComposerOptions);
+}
+document.getElementById('composer-new-add-btn').addEventListener('click', async () => {
+  const name = composerNewNameInput.value.trim();
+  if (!name) { composerNewNameInput.focus(); return; }
+  await composerMaster.addOrGet(name);
+  composerNewNameInput.value = '';
+  renderComposerMasterList();
+  renderComposerOptions();
+});
+
+const partMasterListEl = document.getElementById('part-master-list');
+const partNewNameInput = document.getElementById('part-new-name');
+function renderPartMasterList() {
+  renderSimpleMasterList(partMasterListEl, 'parts', partMaster,
+    id => db.scores.filter(s => s.part_id === id).length, renderPartOptions);
+}
+document.getElementById('part-new-add-btn').addEventListener('click', async () => {
+  const name = partNewNameInput.value.trim();
+  if (!name) { partNewNameInput.focus(); return; }
+  await partMaster.addOrGet(name);
+  partNewNameInput.value = '';
+  renderPartMasterList();
+  renderPartOptions();
+});
+
 function startEditScore(scoreId) {
   const score = db.scores.find(s => s.id === scoreId);
   if (!score) return;
@@ -902,8 +1093,8 @@ function startEditScore(scoreId) {
   editingScoreId = scoreId;
 
   fTitle.value = work.title;
-  fComposer.value = work.composer;
-  fPart.value = score.part_name;
+  fComposer.value = composerMaster.byId(work.composer_id)?.name || '';
+  fPart.value = partMaster.byId(score.part_id)?.name || '';
   fMemo.value = score.memo || '';
   fComposer.disabled = false;
   matchHint.style.display = 'none';
@@ -939,8 +1130,8 @@ fTitle.addEventListener('input', () => {
   const existing = findWorkByTitle(fTitle.value);
   if (existing) {
     matchHint.style.display = 'block';
-    matchHint.textContent = `既存の楽曲「${existing.title} / ${existing.composer || '作曲家未設定'}」に追加します`;
-    fComposer.value = existing.composer;
+    matchHint.textContent = `既存の楽曲「${existing.title} / ${composerMaster.byId(existing.composer_id)?.name || '作曲家未設定'}」に追加します`;
+    fComposer.value = composerMaster.byId(existing.composer_id)?.name || '';
     fComposer.disabled = true;
   } else {
     matchHint.style.display = 'none';
@@ -1040,6 +1231,8 @@ document.getElementById('save-btn').addEventListener('click', async () => {
         imagePath,
       });
     }
+    renderComposerOptions();
+    renderPartOptions();
     resetForm();
     showView('search');
   } finally {
@@ -1062,6 +1255,8 @@ async function enterApp() {
   resultsEl.innerHTML = '<div class="empty">読み込み中…</div>';
   await loadData();
   renderConcertOptions();
+  renderComposerOptions();
+  renderPartOptions();
   renderResults();
 }
 
