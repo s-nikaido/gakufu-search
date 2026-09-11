@@ -808,15 +808,15 @@ function renderMasterCardList() {
   let items, countFn, subFn;
   if (activeFilter === '演奏会') {
     items = db.concerts;
-    countFn = c => performanceCountForConcert(c.id);
+    countFn = performanceCountForConcert;
     subFn = c => c.concert_date;
   } else if (activeFilter === '作曲家') {
     items = db.composers;
-    countFn = c => db.works.filter(w => w.composer_id === c.id).length;
+    countFn = id => db.works.filter(w => w.composer_id === id).length;
     subFn = () => null;
   } else {
     items = db.parts;
-    countFn = p => db.scores.filter(s => s.part_id === p.id).length;
+    countFn = id => db.scores.filter(s => s.part_id === id).length;
     subFn = () => null;
   }
 
