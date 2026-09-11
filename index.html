@@ -241,7 +241,7 @@
     <main>
       <section id="view-search" class="view active">
         <div class="field">
-          <input type="text" id="search-input" placeholder="曲名・作曲家・パート・保管場所で検索">
+          <input type="text" id="search-input" placeholder="曲名・作曲家・パートで検索">
         </div>
         <div class="chip-row" id="filter-chips"></div>
         <div id="results"></div>
@@ -278,11 +278,6 @@
             <label>編成</label>
             <input type="text" id="f-instrumentation" placeholder="オーケストラ">
           </div>
-        </div>
-        <div class="field">
-          <label>保管場所 *</label>
-          <input type="text" id="f-location" placeholder="本棚A-2">
-          <div class="error" id="location-error" style="display:none">保管場所を入力してください</div>
         </div>
         <div class="field">
           <label>メモ</label>
@@ -347,11 +342,10 @@ async function addOrGetWork({ title, composer, genre, instrumentation }) {
   return data;
 }
 
-async function addScore({ workId, partName, location, memo, imagePath }) {
+async function addScore({ workId, partName, memo, imagePath }) {
   const { data, error } = await sb.from('scores').insert({
     work_id: workId,
     part_name: partName.trim(),
-    location: location.trim(),
     memo: memo.trim(),
     image_path: imagePath || null,
   }).select().single();
@@ -390,10 +384,9 @@ async function updateWorkFields(workId, { title, composer, genre, instrumentatio
   if (work) Object.assign(work, payload);
 }
 
-async function updateScore(scoreId, { partName, location, memo, imagePath }) {
+async function updateScore(scoreId, { partName, memo, imagePath }) {
   const payload = {
     part_name: partName.trim(),
-    location: location.trim(),
     memo: memo.trim(),
   };
   if (imagePath) payload.image_path = imagePath;
@@ -433,7 +426,7 @@ tabRegister.addEventListener('click', () => { resetForm(); showView('register');
 const searchInput = document.getElementById('search-input');
 const resultsEl = document.getElementById('results');
 const filterChipsEl = document.getElementById('filter-chips');
-const FILTERS = ['すべて', '作曲家', 'ジャンル', 'パート', '保管場所'];
+const FILTERS = ['すべて', '作曲家', 'ジャンル', 'パート'];
 let activeFilter = 'すべて';
 
 FILTERS.forEach(f => {
@@ -454,15 +447,13 @@ function matches(work, scores, query) {
   const fields = [];
   if (activeFilter === 'すべて') {
     fields.push(work.title, work.composer, work.genre, work.instrumentation,
-      ...scores.map(s => s.part_name), ...scores.map(s => s.location));
+      ...scores.map(s => s.part_name));
   } else if (activeFilter === '作曲家') {
     fields.push(work.composer);
   } else if (activeFilter === 'ジャンル') {
     fields.push(work.genre);
   } else if (activeFilter === 'パート') {
     fields.push(...scores.map(s => s.part_name));
-  } else if (activeFilter === '保管場所') {
-    fields.push(...scores.map(s => s.location));
   }
   return fields.some(f => (f || '').toLowerCase().includes(q));
 }
@@ -507,7 +498,6 @@ function renderResults() {
         ${thumbHtml}
         <div class="info">
           <span class="part">${escapeHtml(s.part_name)}</span>
-          <span class="loc">${escapeHtml(s.location)}</span>
         </div>
         <div class="actions">
           <button class="edit" type="button">編集</button>
@@ -571,11 +561,9 @@ const fComposer = document.getElementById('f-composer');
 const fGenre = document.getElementById('f-genre');
 const fInstrumentation = document.getElementById('f-instrumentation');
 const fPart = document.getElementById('f-part');
-const fLocation = document.getElementById('f-location');
 const fMemo = document.getElementById('f-memo');
 const matchHint = document.getElementById('match-hint');
 const partError = document.getElementById('part-error');
-const locationError = document.getElementById('location-error');
 const titleError = document.getElementById('title-error');
 const saveBtn = document.getElementById('save-btn');
 let editingScoreId = null;
@@ -591,7 +579,6 @@ function startEditScore(scoreId) {
   fGenre.value = work.genre;
   fInstrumentation.value = work.instrumentation;
   fPart.value = score.part_name;
-  fLocation.value = score.location;
   fMemo.value = score.memo || '';
   fComposer.disabled = false;
   fGenre.disabled = false;
@@ -673,7 +660,6 @@ function resetForm() {
   fGenre.value = '';
   fInstrumentation.value = '';
   fPart.value = '';
-  fLocation.value = '';
   fMemo.value = '';
   fComposer.disabled = false;
   fGenre.disabled = false;
@@ -686,7 +672,6 @@ function resetForm() {
   existingImagePath = null;
   photoFile.value = '';
   partError.style.display = 'none';
-  locationError.style.display = 'none';
   titleError.style.display = 'none';
   editingScoreId = null;
   saveBtn.textContent = '保存';
@@ -696,8 +681,6 @@ document.getElementById('save-btn').addEventListener('click', async () => {
   let valid = true;
   if (!fPart.value.trim()) { partError.style.display = 'block'; valid = false; }
   else { partError.style.display = 'none'; }
-  if (!fLocation.value.trim()) { locationError.style.display = 'block'; valid = false; }
-  else { locationError.style.display = 'none'; }
   if (!fTitle.value.trim()) {
     titleError.style.display = 'block';
     fTitle.focus();
@@ -725,7 +708,6 @@ document.getElementById('save-btn').addEventListener('click', async () => {
       });
       await updateScore(editingScoreId, {
         partName: fPart.value,
-        location: fLocation.value,
         memo: fMemo.value,
         imagePath,
       });
@@ -739,7 +721,6 @@ document.getElementById('save-btn').addEventListener('click', async () => {
       await addScore({
         workId: work.id,
         partName: fPart.value,
-        location: fLocation.value,
         memo: fMemo.value,
         imagePath,
       });
