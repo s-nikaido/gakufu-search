@@ -473,7 +473,7 @@
       </section>
     </main>
 
-    <footer class="app-footer">© 2026 NIKAIDO Works. All Rights Reserved. ・ <span id="app-version"></span></footer>
+    <footer class="app-footer">© 2026 NIKAIDO Works. All Rights Reserved. ・ v2</footer>
   </div>
 </div>
 
@@ -1588,14 +1588,6 @@ sb.auth.onAuthStateChange((event, session) => {
 });
 
 // 初期表示（セッションの有無はonAuthStateChangeが初回発火時にも判定する）
-
-// ---- バージョン表示（ファイルの最終更新日時を自動表示） ----
-(() => {
-  const d = new Date(document.lastModified);
-  const pad = n => String(n).padStart(2, '0');
-  document.getElementById('app-version').textContent =
-    isNaN(d) ? '' : `更新: ${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())}`;
-})();
 </script>
 </body>
 </html>
