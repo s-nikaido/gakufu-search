@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>楽譜ライブラリ</title>
+<style>
+  :root {
+    --bg: #F7F6F3;
+    --surface: #FFFFFF;
+    --border: #E3E1DA;
+    --text: #2C2C2A;
+    --text-secondary: #6B6A65;
+    --text-muted: #9B9A94;
+    --accent: #3C6E52;
+    --accent-bg: #E6EFE9;
+    --danger: #B4402A;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Hiragino Sans", "Yu Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .app {
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100vh;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header h1 { font-size: 17px; font-weight: 500; margin: 0; }
+  main { flex: 1; padding: 16px; overflow-y: auto; }
+  nav.tabs {
+    display: flex;
+    border-top: 1px solid var(--border);
+  }
+  nav.tabs button {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    background: none;
+    font-size: 13px;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  nav.tabs button.active { color: var(--accent); font-weight: 500; }
+
+  input, textarea, select {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-family: inherit;
+    background: var(--surface);
+    color: var(--text);
+  }
+  input:focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: block;
+    margin-bottom: 4px;
+  }
+  .field { margin-bottom: 12px; }
+  .row { display: flex; gap: 10px; }
+  .row > .field { flex: 1; }
+
+  button.primary {
+    width: 100%;
+    padding: 11px;
+    border: none;
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  button.primary:active { opacity: 0.85; }
+
+  .chip-row { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 14px; }
+  .chip {
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    white-space: nowrap;
+    cursor: pointer;
+    background: var(--surface);
+  }
+  .chip.active { background: var(--accent-bg); color: var(--accent); border-color: var(--accent-bg); }
+
+  .work-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  .work-card .work-header {
+    padding: 12px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .work-header .title { font-size: 14px; font-weight: 500; margin: 0; }
+  .work-header .sub { font-size: 12px; color: var(--text-secondary); margin: 3px 0 0; }
+  .work-header .count { font-size: 12px; color: var(--text-muted); }
+  .score-list { border-top: 1px solid var(--border); display: none; }
+  .score-list.open { display: block; }
+  .score-row {
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+  }
+  .score-row:last-child { border-bottom: none; }
+  .score-row .thumb {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    object-fit: cover;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+  .score-row .pdf-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent-bg);
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 500;
+  }
+  .score-row .info { flex: 1; display: flex; justify-content: space-between; }
+  .score-row .part { font-weight: 500; }
+  .score-row .loc { color: var(--text-secondary); }
+  .score-row .actions { display: flex; gap: 8px; margin-left: 8px; flex-shrink: 0; }
+  .score-row .actions button {
+    border: none;
+    background: none;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px 4px;
+  }
+  .score-row .actions button.delete { color: var(--danger); }
+
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    padding: 20px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal-overlay img {
+    max-width: 100%;
+    max-height: 80vh;
+    border-radius: 8px;
+  }
+
+  .empty { text-align: center; color: var(--text-muted); font-size: 13px; padding: 40px 0; }
+
+  .photo-input {
+    border: 1px dashed var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-bottom: 16px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .photo-input img { max-width: 100%; max-height: 140px; border-radius: 8px; }
+  .photo-input input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer;
+  }
+
+  .hint {
+    font-size: 12px;
+    color: var(--accent);
+    background: var(--accent-bg);
+    border-radius: var(--radius);
+    padding: 6px 8px;
+    margin-top: 6px;
+  }
+  .error { font-size: 12px; color: var(--danger); margin-top: 4px; }
+  .view { display: none; }
+  .view.active { display: block; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <section id="view-login" class="view active">
+    <h1 style="font-size:17px;font-weight:500;margin:24px 0 20px;">楽譜ライブラリ</h1>
+    <div class="field">
+      <label>メールアドレス</label>
+      <input type="email" id="login-email" placeholder="you@example.com">
+    </div>
+    <div class="field">
+      <label>パスワード</label>
+      <input type="password" id="login-password">
+    </div>
+    <div class="error" id="login-error" style="display:none"></div>
+    <button class="primary" id="login-btn" style="margin-top:8px;">ログイン</button>
+  </section>
+
+  <div id="app-content" style="display:none;">
+    <header>
+      <h1>楽譜ライブラリ</h1>
+      <button id="logout-btn" style="border:none;background:none;color:var(--text-muted);font-size:12px;cursor:pointer;">ログアウト</button>
+    </header>
+
+    <main>
+      <section id="view-search" class="view active">
+        <div class="field">
+          <input type="text" id="search-input" placeholder="曲名・作曲家・パート・保管場所で検索">
+        </div>
+        <div class="chip-row" id="filter-chips"></div>
+        <div id="results"></div>
+      </section>
+
+      <section id="view-register" class="view">
+        <label class="photo-input" id="photo-input-label">
+          <span id="photo-placeholder">写真を撮影 / アップロード</span>
+          <img id="photo-preview" style="display:none">
+          <input type="file" id="photo-file" accept="image/*,application/pdf">
+        </label>
+
+        <div class="field">
+          <label>曲名 *</label>
+          <input type="text" id="f-title" placeholder="交響曲第5番">
+          <div class="error" id="title-error" style="display:none">曲名を入力してください</div>
+          <div class="hint" id="match-hint" style="display:none"></div>
+        </div>
+        <div class="field">
+          <label>作曲家</label>
+          <input type="text" id="f-composer" placeholder="ベートーヴェン">
+        </div>
+        <div class="field" style="border-top:1px solid var(--border); padding-top:12px;">
+          <label>パート名 *</label>
+          <input type="text" id="f-part" placeholder="フルート ／ スコア全体 ／ ピアノ伴奏 など">
+          <div class="error" id="part-error" style="display:none">パート名を入力してください</div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>ジャンル</label>
+            <input type="text" id="f-genre" placeholder="クラシック">
+          </div>
+          <div class="field">
+            <label>編成</label>
+            <input type="text" id="f-instrumentation" placeholder="オーケストラ">
+          </div>
+        </div>
+        <div class="field">
+          <label>保管場所 *</label>
+          <input type="text" id="f-location" placeholder="本棚A-2">
+          <div class="error" id="location-error" style="display:none">保管場所を入力してください</div>
+        </div>
+        <div class="field">
+          <label>メモ</label>
+          <textarea id="f-memo" rows="3" placeholder="演奏会用アレンジなど"></textarea>
+        </div>
+        <button class="primary" id="save-btn">保存</button>
+      </section>
+    </main>
+
+    <nav class="tabs">
+      <button id="tab-search" class="active">検索</button>
+      <button id="tab-register">登録</button>
+    </nav>
+  </div>
+</div>
+
+<div class="modal-overlay" id="image-modal">
+  <img id="modal-image" src="">
+  <iframe id="modal-pdf" style="width:100%;height:80vh;border:none;border-radius:8px;background:#fff;display:none"></iframe>
+</div>
+
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// ---- Supabase接続 ----
+const sb = window.supabase.createClient(
+  'https://ensvuiojpurlmqlukbks.supabase.co',
+  'sb_publishable_fg-3xQHRU3Jvgn1XBiszyA_i6zvHhb6'
+);
+
+// ---- データ層（Supabaseのworks・scoresテーブルを利用） ----
+let db = { works: [], scores: [] };
+
+async function loadData() {
+  const { data: works, error: worksError } = await sb.from('works').select('*').order('created_at');
+  const { data: scores, error: scoresError } = await sb.from('scores').select('*').order('created_at');
+  if (worksError || scoresError) {
+    console.error(worksError, scoresError);
+    resultsEl.innerHTML = '<div class="empty">データの取得に失敗しました</div>';
+    return;
+  }
+  db.works = works;
+  db.scores = scores;
+}
+
+function findWorkByTitle(title) {
+  const norm = title.trim();
+  if (!norm) return null;
+  return db.works.find(w => w.title.trim() === norm) || null;
+}
+
+async function addOrGetWork({ title, composer, genre, instrumentation }) {
+  const existing = findWorkByTitle(title);
+  if (existing) return existing;
+  const { data, error } = await sb.from('works').insert({
+    title: title.trim(),
+    composer: composer.trim(),
+    genre: genre.trim(),
+    instrumentation: instrumentation.trim(),
+  }).select().single();
+  if (error) { alert('楽曲の保存に失敗しました：' + error.message); throw error; }
+  db.works.push(data);
+  return data;
+}
+
+async function addScore({ workId, partName, location, memo, imagePath }) {
+  const { data, error } = await sb.from('scores').insert({
+    work_id: workId,
+    part_name: partName.trim(),
+    location: location.trim(),
+    memo: memo.trim(),
+    image_path: imagePath || null,
+  }).select().single();
+  if (error) { alert('楽譜の保存に失敗しました：' + error.message); throw error; }
+  db.scores.push(data);
+  return data;
+}
+
+function scoresForWork(workId) {
+  return db.scores.filter(s => s.work_id === workId);
+}
+
+async function deleteScore(scoreId) {
+  const score = db.scores.find(s => s.id === scoreId);
+  if (!score) return;
+  const { error } = await sb.from('scores').delete().eq('id', scoreId);
+  if (error) { alert('削除に失敗しました：' + error.message); return; }
+  db.scores = db.scores.filter(s => s.id !== scoreId);
+  if (scoresForWork(score.work_id).length === 0) {
+    await sb.from('works').delete().eq('id', score.work_id);
+    db.works = db.works.filter(w => w.id !== score.work_id);
+  }
+  renderResults();
+}
+
+async function updateWorkFields(workId, { title, composer, genre, instrumentation }) {
+  const payload = {
+    title: title.trim(),
+    composer: composer.trim(),
+    genre: genre.trim(),
+    instrumentation: instrumentation.trim(),
+  };
+  const { error } = await sb.from('works').update(payload).eq('id', workId);
+  if (error) { alert('楽曲の更新に失敗しました：' + error.message); return; }
+  const work = db.works.find(w => w.id === workId);
+  if (work) Object.assign(work, payload);
+}
+
+async function updateScore(scoreId, { partName, location, memo, imagePath }) {
+  const payload = {
+    part_name: partName.trim(),
+    location: location.trim(),
+    memo: memo.trim(),
+  };
+  if (imagePath) payload.image_path = imagePath;
+  const { error } = await sb.from('scores').update(payload).eq('id', scoreId);
+  if (error) { alert('楽譜の更新に失敗しました：' + error.message); return; }
+  const score = db.scores.find(s => s.id === scoreId);
+  if (score) Object.assign(score, payload);
+}
+
+async function uploadFile(file) {
+  const ext = file.name.includes('.') ? file.name.split('.').pop() : 'dat';
+  const path = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const { error } = await sb.storage.from('scores').upload(path, file);
+  if (error) { alert('ファイルのアップロードに失敗しました：' + error.message); throw error; }
+  const { data } = sb.storage.from('scores').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+// ---- タブ切り替え ----
+const tabSearch = document.getElementById('tab-search');
+const tabRegister = document.getElementById('tab-register');
+const viewSearch = document.getElementById('view-search');
+const viewRegister = document.getElementById('view-register');
+
+function showView(name) {
+  const isSearch = name === 'search';
+  viewSearch.classList.toggle('active', isSearch);
+  viewRegister.classList.toggle('active', !isSearch);
+  tabSearch.classList.toggle('active', isSearch);
+  tabRegister.classList.toggle('active', !isSearch);
+  if (isSearch) renderResults();
+}
+tabSearch.addEventListener('click', () => showView('search'));
+tabRegister.addEventListener('click', () => { resetForm(); showView('register'); });
+
+// ---- 検索画面 ----
+const searchInput = document.getElementById('search-input');
+const resultsEl = document.getElementById('results');
+const filterChipsEl = document.getElementById('filter-chips');
+const FILTERS = ['すべて', '作曲家', 'ジャンル', 'パート', '保管場所'];
+let activeFilter = 'すべて';
+
+FILTERS.forEach(f => {
+  const chip = document.createElement('span');
+  chip.className = 'chip' + (f === activeFilter ? ' active' : '');
+  chip.textContent = f;
+  chip.addEventListener('click', () => {
+    activeFilter = f;
+    [...filterChipsEl.children].forEach(c => c.classList.toggle('active', c.textContent === f));
+    renderResults();
+  });
+  filterChipsEl.appendChild(chip);
+});
+
+function matches(work, scores, query) {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  const fields = [];
+  if (activeFilter === 'すべて') {
+    fields.push(work.title, work.composer, work.genre, work.instrumentation,
+      ...scores.map(s => s.part_name), ...scores.map(s => s.location));
+  } else if (activeFilter === '作曲家') {
+    fields.push(work.composer);
+  } else if (activeFilter === 'ジャンル') {
+    fields.push(work.genre);
+  } else if (activeFilter === 'パート') {
+    fields.push(...scores.map(s => s.part_name));
+  } else if (activeFilter === '保管場所') {
+    fields.push(...scores.map(s => s.location));
+  }
+  return fields.some(f => (f || '').toLowerCase().includes(q));
+}
+
+function renderResults() {
+  const query = searchInput.value.trim();
+  resultsEl.innerHTML = '';
+  const filtered = db.works
+    .map(w => ({ work: w, scores: scoresForWork(w.id) }))
+    .filter(({ work, scores }) => matches(work, scores, query));
+
+  if (filtered.length === 0) {
+    resultsEl.innerHTML = '<div class="empty">登録された楽譜がありません</div>';
+    return;
+  }
+
+  filtered.forEach(({ work, scores }) => {
+    const card = document.createElement('div');
+    card.className = 'work-card';
+
+    const header = document.createElement('div');
+    header.className = 'work-header';
+    header.innerHTML = `
+      <div>
+        <p class="title">${escapeHtml(work.title)}</p>
+        <p class="sub">${escapeHtml(work.composer || '作曲家未設定')} ・ ${escapeHtml(work.instrumentation || '編成未設定')}</p>
+      </div>
+      <span class="count">${scores.length}件</span>
+    `;
+
+    const list = document.createElement('div');
+    list.className = 'score-list';
+    scores.forEach(s => {
+      const row = document.createElement('div');
+      row.className = 'score-row';
+      const thumbHtml = s.image_path
+        ? (isPdf(s.image_path)
+            ? `<span class="thumb pdf-badge">PDF</span>`
+            : `<img class="thumb" src="${s.image_path}">`)
+        : '';
+      row.innerHTML = `
+        ${thumbHtml}
+        <div class="info">
+          <span class="part">${escapeHtml(s.part_name)}</span>
+          <span class="loc">${escapeHtml(s.location)}</span>
+        </div>
+        <div class="actions">
+          <button class="edit" type="button">編集</button>
+          <button class="delete" type="button">削除</button>
+        </div>
+      `;
+      if (s.image_path) {
+        row.querySelector('.thumb').addEventListener('click', (e) => {
+          e.stopPropagation();
+          openImageModal(s.image_path);
+        });
+      }
+      row.querySelector('.edit').addEventListener('click', (e) => {
+        e.stopPropagation();
+        startEditScore(s.id);
+      });
+      row.querySelector('.delete').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm('この楽譜を削除しますか？')) {
+          deleteScore(s.id);
+        }
+      });
+      list.appendChild(row);
+    });
+
+    header.addEventListener('click', () => list.classList.toggle('open'));
+    card.appendChild(header);
+    card.appendChild(list);
+    resultsEl.appendChild(card);
+  });
+}
+
+const imageModal = document.getElementById('image-modal');
+const modalImage = document.getElementById('modal-image');
+const modalPdf = document.getElementById('modal-pdf');
+
+function openImageModal(src) {
+  if (isPdf(src)) {
+    modalPdf.src = src;
+    modalPdf.style.display = 'block';
+    modalImage.style.display = 'none';
+  } else {
+    modalImage.src = src;
+    modalImage.style.display = 'block';
+    modalPdf.style.display = 'none';
+    modalPdf.removeAttribute('src');
+  }
+  imageModal.classList.add('open');
+}
+imageModal.addEventListener('click', (e) => {
+  if (e.target === imageModal) {
+    imageModal.classList.remove('open');
+    modalPdf.removeAttribute('src');
+  }
+});
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+searchInput.addEventListener('input', renderResults);
+
+// ---- 登録画面 ----
+const fTitle = document.getElementById('f-title');
+const fComposer = document.getElementById('f-composer');
+const fGenre = document.getElementById('f-genre');
+const fInstrumentation = document.getElementById('f-instrumentation');
+const fPart = document.getElementById('f-part');
+const fLocation = document.getElementById('f-location');
+const fMemo = document.getElementById('f-memo');
+const matchHint = document.getElementById('match-hint');
+const partError = document.getElementById('part-error');
+const locationError = document.getElementById('location-error');
+const titleError = document.getElementById('title-error');
+const saveBtn = document.getElementById('save-btn');
+let editingScoreId = null;
+
+function startEditScore(scoreId) {
+  const score = db.scores.find(s => s.id === scoreId);
+  if (!score) return;
+  const work = db.works.find(w => w.id === score.work_id);
+  editingScoreId = scoreId;
+
+  fTitle.value = work.title;
+  fComposer.value = work.composer;
+  fGenre.value = work.genre;
+  fInstrumentation.value = work.instrumentation;
+  fPart.value = score.part_name;
+  fLocation.value = score.location;
+  fMemo.value = score.memo || '';
+  fComposer.disabled = false;
+  fGenre.disabled = false;
+  fInstrumentation.disabled = false;
+  matchHint.style.display = 'none';
+
+  if (score.image_path) {
+    if (isPdf(score.image_path)) {
+      photoPreview.style.display = 'none';
+      photoPlaceholder.style.display = 'block';
+      photoPlaceholder.textContent = '登録済みのPDFがあります（変更する場合のみ選び直してください）';
+    } else {
+      photoPreview.src = score.image_path;
+      photoPreview.style.display = 'block';
+      photoPlaceholder.style.display = 'none';
+    }
+    existingImagePath = score.image_path;
+  } else {
+    photoPreview.style.display = 'none';
+    photoPlaceholder.style.display = 'block';
+    photoPlaceholder.textContent = '写真を撮影 / アップロード';
+    existingImagePath = null;
+  }
+  selectedFile = null;
+
+  saveBtn.textContent = '更新';
+  showView('register');
+}
+
+fTitle.addEventListener('input', () => {
+  if (editingScoreId) return;
+  const existing = findWorkByTitle(fTitle.value);
+  if (existing) {
+    matchHint.style.display = 'block';
+    matchHint.textContent = `既存の楽曲「${existing.title} / ${existing.composer || '作曲家未設定'}」に追加します`;
+    fComposer.value = existing.composer;
+    fGenre.value = existing.genre;
+    fInstrumentation.value = existing.instrumentation;
+    fComposer.disabled = true;
+    fGenre.disabled = true;
+    fInstrumentation.disabled = true;
+  } else {
+    matchHint.style.display = 'none';
+    fComposer.disabled = false;
+    fGenre.disabled = false;
+    fInstrumentation.disabled = false;
+  }
+});
+
+// 写真アップロード
+const photoFile = document.getElementById('photo-file');
+const photoPreview = document.getElementById('photo-preview');
+const photoPlaceholder = document.getElementById('photo-placeholder');
+let selectedFile = null;
+let existingImagePath = null;
+
+function isPdf(url) {
+  return /\.pdf(\?|$)/i.test(url || '');
+}
+
+photoFile.addEventListener('change', () => {
+  const file = photoFile.files[0];
+  if (!file) return;
+  selectedFile = file;
+  if (file.type === 'application/pdf') {
+    photoPreview.style.display = 'none';
+    photoPlaceholder.style.display = 'block';
+    photoPlaceholder.textContent = 'PDFを選択しました：' + file.name;
+  } else {
+    photoPreview.src = URL.createObjectURL(file);
+    photoPreview.style.display = 'block';
+    photoPlaceholder.style.display = 'none';
+  }
+});
+
+function resetForm() {
+  fTitle.value = '';
+  fComposer.value = '';
+  fGenre.value = '';
+  fInstrumentation.value = '';
+  fPart.value = '';
+  fLocation.value = '';
+  fMemo.value = '';
+  fComposer.disabled = false;
+  fGenre.disabled = false;
+  fInstrumentation.disabled = false;
+  matchHint.style.display = 'none';
+  photoPreview.style.display = 'none';
+  photoPlaceholder.style.display = 'block';
+  photoPlaceholder.textContent = '写真を撮影 / アップロード';
+  selectedFile = null;
+  existingImagePath = null;
+  photoFile.value = '';
+  partError.style.display = 'none';
+  locationError.style.display = 'none';
+  titleError.style.display = 'none';
+  editingScoreId = null;
+  saveBtn.textContent = '保存';
+}
+
+document.getElementById('save-btn').addEventListener('click', async () => {
+  let valid = true;
+  if (!fPart.value.trim()) { partError.style.display = 'block'; valid = false; }
+  else { partError.style.display = 'none'; }
+  if (!fLocation.value.trim()) { locationError.style.display = 'block'; valid = false; }
+  else { locationError.style.display = 'none'; }
+  if (!fTitle.value.trim()) {
+    titleError.style.display = 'block';
+    fTitle.focus();
+    valid = false;
+  } else {
+    titleError.style.display = 'none';
+  }
+  if (!valid) return;
+
+  saveBtn.disabled = true;
+  saveBtn.textContent = '保存中…';
+  try {
+    let imagePath = existingImagePath;
+    if (selectedFile) {
+      imagePath = await uploadFile(selectedFile);
+    }
+
+    if (editingScoreId) {
+      const score = db.scores.find(s => s.id === editingScoreId);
+      await updateWorkFields(score.work_id, {
+        title: fTitle.value,
+        composer: fComposer.value,
+        genre: fGenre.value,
+        instrumentation: fInstrumentation.value,
+      });
+      await updateScore(editingScoreId, {
+        partName: fPart.value,
+        location: fLocation.value,
+        memo: fMemo.value,
+        imagePath,
+      });
+    } else {
+      const work = await addOrGetWork({
+        title: fTitle.value,
+        composer: fComposer.value,
+        genre: fGenre.value,
+        instrumentation: fInstrumentation.value,
+      });
+      await addScore({
+        workId: work.id,
+        partName: fPart.value,
+        location: fLocation.value,
+        memo: fMemo.value,
+        imagePath,
+      });
+    }
+    resetForm();
+    showView('search');
+  } finally {
+    saveBtn.disabled = false;
+  }
+});
+
+// ---- 認証 ----
+const viewLogin = document.getElementById('view-login');
+const appContent = document.getElementById('app-content');
+const loginEmail = document.getElementById('login-email');
+const loginPassword = document.getElementById('login-password');
+const loginError = document.getElementById('login-error');
+const loginBtn = document.getElementById('login-btn');
+const logoutBtn = document.getElementById('logout-btn');
+
+async function enterApp() {
+  viewLogin.classList.remove('active');
+  appContent.style.display = '';
+  resultsEl.innerHTML = '<div class="empty">読み込み中…</div>';
+  await loadData();
+  renderResults();
+}
+
+function showLogin() {
+  appContent.style.display = 'none';
+  viewLogin.classList.add('active');
+  loginEmail.value = '';
+  loginPassword.value = '';
+  loginError.style.display = 'none';
+}
+
+loginBtn.addEventListener('click', async () => {
+  const email = loginEmail.value.trim();
+  const password = loginPassword.value;
+  if (!email || !password) {
+    loginError.textContent = 'メールアドレスとパスワードを入力してください';
+    loginError.style.display = 'block';
+    return;
+  }
+  loginBtn.disabled = true;
+  loginBtn.textContent = 'ログイン中…';
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  loginBtn.disabled = false;
+  loginBtn.textContent = 'ログイン';
+  if (error) {
+    loginError.textContent = 'ログインに失敗しました：' + error.message;
+    loginError.style.display = 'block';
+  }
+});
+
+logoutBtn.addEventListener('click', async () => {
+  await sb.auth.signOut();
+});
+
+sb.auth.onAuthStateChange((event, session) => {
+  if (session) {
+    enterApp();
+  } else {
+    showLogin();
+  }
+});
+
+// 初期表示（セッションの有無はonAuthStateChangeが初回発火時にも判定する）
+</script>
+</body>
+</html>
