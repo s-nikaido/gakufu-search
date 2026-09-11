@@ -388,7 +388,7 @@
         <label class="photo-input" id="photo-input-label">
           <span id="photo-placeholder">写真を撮影 / アップロード</span>
           <img id="photo-preview" style="display:none">
-          <input type="file" id="photo-file" accept="image/*,application/pdf">
+          <input type="file" id="photo-file" accept="image/*,application/pdf" multiple>
         </label>
 
         <div class="field">
@@ -467,6 +467,7 @@
 
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <script>
 // ---- Supabase接続 ----
 const sb = window.supabase.createClient(
@@ -1248,7 +1249,7 @@ function startEditScore(scoreId) {
     photoPlaceholder.textContent = '写真を撮影 / アップロード';
     existingImagePath = null;
   }
-  selectedFile = null;
+  selectedFiles = [];
 
   performanceSection.style.display = 'block';
   renderPerformanceList(scoreId);
@@ -1275,7 +1276,7 @@ fTitle.addEventListener('input', () => {
 const photoFile = document.getElementById('photo-file');
 const photoPreview = document.getElementById('photo-preview');
 const photoPlaceholder = document.getElementById('photo-placeholder');
-let selectedFile = null;
+let selectedFiles = [];
 let existingImagePath = null;
 
 function isPdf(url) {
@@ -1283,19 +1284,62 @@ function isPdf(url) {
 }
 
 photoFile.addEventListener('change', () => {
-  const file = photoFile.files[0];
-  if (!file) return;
-  selectedFile = file;
-  if (file.type === 'application/pdf') {
+  const files = Array.from(photoFile.files);
+  if (files.length === 0) return;
+  selectedFiles = files;
+  if (files.length > 1) {
     photoPreview.style.display = 'none';
     photoPlaceholder.style.display = 'block';
-    photoPlaceholder.textContent = 'PDFを選択しました：' + file.name;
+    photoPlaceholder.textContent = `${files.length}枚の画像を選択しました（保存時に1つのPDFにまとめます）`;
+  } else if (files[0].type === 'application/pdf') {
+    photoPreview.style.display = 'none';
+    photoPlaceholder.style.display = 'block';
+    photoPlaceholder.textContent = 'PDFを選択しました：' + files[0].name;
   } else {
-    photoPreview.src = URL.createObjectURL(file);
+    photoPreview.src = URL.createObjectURL(files[0]);
     photoPreview.style.display = 'block';
     photoPlaceholder.style.display = 'none';
   }
 });
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImageEl(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+async function imagesToPdfFile(files) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt' });
+  for (let i = 0; i < files.length; i++) {
+    const dataUrl = await fileToDataUrl(files[i]);
+    const img = await loadImageEl(dataUrl);
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const ratio = Math.min(pageWidth / img.width, pageHeight / img.height);
+    const w = img.width * ratio;
+    const h = img.height * ratio;
+    const x = (pageWidth - w) / 2;
+    const y = (pageHeight - h) / 2;
+    if (i > 0) doc.addPage();
+    const format = files[i].type.includes('png') ? 'PNG' : 'JPEG';
+    doc.addImage(dataUrl, format, x, y, w, h);
+  }
+  const blob = doc.output('blob');
+  return new File([blob], 'scan.pdf', { type: 'application/pdf' });
+}
 
 function resetForm() {
   fTitle.value = '';
@@ -1307,7 +1351,7 @@ function resetForm() {
   photoPreview.style.display = 'none';
   photoPlaceholder.style.display = 'block';
   photoPlaceholder.textContent = '写真を撮影 / アップロード';
-  selectedFile = null;
+  selectedFiles = [];
   existingImagePath = null;
   photoFile.value = '';
   partError.style.display = 'none';
@@ -1336,8 +1380,13 @@ document.getElementById('save-btn').addEventListener('click', async () => {
   saveBtn.textContent = '保存中…';
   try {
     let imagePath = existingImagePath;
-    if (selectedFile) {
-      imagePath = await uploadFile(selectedFile);
+    if (selectedFiles.length > 1) {
+      saveBtn.textContent = 'PDFに変換中…';
+      const pdfFile = await imagesToPdfFile(selectedFiles);
+      saveBtn.textContent = '保存中…';
+      imagePath = await uploadFile(pdfFile);
+    } else if (selectedFiles.length === 1) {
+      imagePath = await uploadFile(selectedFiles[0]);
     }
 
     if (editingScoreId) {
