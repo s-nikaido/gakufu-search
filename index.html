@@ -311,6 +311,30 @@
   .error { font-size: 12px; color: var(--danger); margin-top: 4px; }
   .view { display: none; }
   .view.active { display: block; }
+
+  .autocomplete-wrap { position: relative; }
+  .autocomplete-list {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 var(--radius) var(--radius);
+    max-height: 180px;
+    overflow-y: auto;
+    z-index: 6;
+  }
+  .autocomplete-list.open { display: block; }
+  .autocomplete-list div {
+    padding: 9px 10px;
+    font-size: 14px;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .autocomplete-list div:active { background: var(--bg); }
 </style>
 </head>
 <body>
@@ -375,13 +399,17 @@
         </div>
         <div class="field">
           <label>作曲家</label>
-          <input type="text" id="f-composer" list="composer-options">
-          <datalist id="composer-options"></datalist>
+          <div class="autocomplete-wrap">
+            <input type="text" id="f-composer" autocomplete="off">
+            <div class="autocomplete-list" id="composer-suggest"></div>
+          </div>
         </div>
         <div class="field" style="border-top:1px solid var(--border); padding-top:12px;">
           <label>パート名 *</label>
-          <input type="text" id="f-part" list="part-options">
-          <datalist id="part-options"></datalist>
+          <div class="autocomplete-wrap">
+            <input type="text" id="f-part" autocomplete="off">
+            <div class="autocomplete-list" id="part-suggest"></div>
+          </div>
           <div class="error" id="part-error" style="display:none">パート名を入力してください</div>
         </div>
         <div class="field">
@@ -392,8 +420,10 @@
           <label>演奏会履歴</label>
           <div id="performance-list"></div>
           <div style="display:flex; gap:6px; margin-top:8px;">
-            <input type="text" id="performance-name" list="concert-options" placeholder="演奏会名" style="flex:2;">
-            <datalist id="concert-options"></datalist>
+            <div class="autocomplete-wrap" style="flex:2;">
+              <input type="text" id="performance-name" autocomplete="off" placeholder="演奏会名">
+              <div class="autocomplete-list" id="concert-suggest"></div>
+            </div>
             <input type="date" id="performance-date" style="flex:1;">
             <button type="button" id="performance-add-btn" style="width:auto; padding:0 12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); color:var(--text); font-size:13px; cursor:pointer;">追加</button>
           </div>
@@ -808,15 +838,15 @@ function renderMasterCardList() {
   let items, countFn, subFn;
   if (activeFilter === '演奏会') {
     items = db.concerts;
-    countFn = c => performanceCountForConcert(c.id);
+    countFn = performanceCountForConcert;
     subFn = c => c.concert_date;
   } else if (activeFilter === '作曲家') {
     items = db.composers;
-    countFn = c => db.works.filter(w => w.composer_id === c.id).length;
+    countFn = id => db.works.filter(w => w.composer_id === id).length;
     subFn = () => null;
   } else {
     items = db.parts;
-    countFn = p => db.scores.filter(s => s.part_id === p.id).length;
+    countFn = id => db.scores.filter(s => s.part_id === id).length;
     subFn = () => null;
   }
 
@@ -930,10 +960,38 @@ const matchHint = document.getElementById('match-hint');
 const partError = document.getElementById('part-error');
 const titleError = document.getElementById('title-error');
 const saveBtn = document.getElementById('save-btn');
+
+// ---- 自前オートコンプリート（iOS Safariはdatalistの候補をほぼ表示できないため） ----
+function setupAutocomplete(inputEl, listEl, getOptions) {
+  function render() {
+    const q = inputEl.value.trim().toLowerCase();
+    const options = getOptions();
+    const matched = (q ? options.filter(name => name.toLowerCase().includes(q)) : options).slice(0, 8);
+    if (matched.length === 0) {
+      listEl.classList.remove('open');
+      listEl.innerHTML = '';
+      return;
+    }
+    listEl.innerHTML = matched.map(name => `<div>${escapeHtml(name)}</div>`).join('');
+    listEl.classList.add('open');
+  }
+  inputEl.addEventListener('focus', render);
+  inputEl.addEventListener('input', render);
+  inputEl.addEventListener('blur', () => setTimeout(() => listEl.classList.remove('open'), 150));
+  listEl.addEventListener('mousedown', (e) => {
+    if (e.target.tagName !== 'DIV') return;
+    inputEl.value = e.target.textContent;
+    listEl.classList.remove('open');
+    inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+setupAutocomplete(fComposer, document.getElementById('composer-suggest'), () => db.composers.map(c => c.name));
+setupAutocomplete(fPart, document.getElementById('part-suggest'), () => db.parts.map(p => p.name));
 const performanceSection = document.getElementById('performance-section');
 const performanceListEl = document.getElementById('performance-list');
 const performanceNameInput = document.getElementById('performance-name');
 const performanceDateInput = document.getElementById('performance-date');
+setupAutocomplete(performanceNameInput, document.getElementById('concert-suggest'), () => db.concerts.map(c => c.name));
 let editingScoreId = null;
 
 function renderPerformanceList(scoreId) {
@@ -977,8 +1035,7 @@ document.getElementById('performance-add-btn').addEventListener('click', async (
 });
 
 function renderConcertOptions() {
-  const datalist = document.getElementById('concert-options');
-  datalist.innerHTML = db.concerts.map(c => `<option value="${escapeHtml(c.name)}">`).join('');
+  // 演奏会名の候補は自前のオートコンプリートがdb.concertsを直接参照するため、ここでは何もしない
 }
 
 // ---- 演奏会マスタ管理画面 ----
