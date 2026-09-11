@@ -300,7 +300,6 @@
 
 <div class="modal-overlay" id="image-modal">
   <img id="modal-image" src="">
-  <iframe id="modal-pdf" style="width:100%;height:80vh;border:none;border-radius:8px;background:#fff;display:none"></iframe>
 </div>
 
 
@@ -517,7 +516,11 @@ function renderResults() {
       if (s.image_path) {
         row.querySelector('.thumb').addEventListener('click', (e) => {
           e.stopPropagation();
-          openImageModal(s.image_path);
+          if (isPdf(s.image_path)) {
+            window.open(s.image_path, '_blank');
+          } else {
+            openImageModal(s.image_path);
+          }
         });
       }
       row.querySelector('.edit').addEventListener('click', (e) => {
@@ -542,25 +545,14 @@ function renderResults() {
 
 const imageModal = document.getElementById('image-modal');
 const modalImage = document.getElementById('modal-image');
-const modalPdf = document.getElementById('modal-pdf');
 
 function openImageModal(src) {
-  if (isPdf(src)) {
-    modalPdf.src = src;
-    modalPdf.style.display = 'block';
-    modalImage.style.display = 'none';
-  } else {
-    modalImage.src = src;
-    modalImage.style.display = 'block';
-    modalPdf.style.display = 'none';
-    modalPdf.removeAttribute('src');
-  }
+  modalImage.src = src;
   imageModal.classList.add('open');
 }
 imageModal.addEventListener('click', (e) => {
   if (e.target === imageModal) {
     imageModal.classList.remove('open');
-    modalPdf.removeAttribute('src');
   }
 });
 
