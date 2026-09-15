@@ -357,7 +357,7 @@
     </div>
     <div class="error" id="login-error" style="display:none"></div>
     <button class="primary" id="login-btn" style="margin-top:8px;">ログイン</button>
-    <p style="text-align:center; font-size:11px; color:var(--text-muted); margin-top:24px;">© 2026 NIKAIDO Works. All Rights Reserved. ・ v2.005</p>
+    <p style="text-align:center; font-size:11px; color:var(--text-muted); margin-top:24px;">© 2026 NIKAIDO Works. All Rights Reserved. ・ v2.006</p>
   </section>
 
   <div id="app-content" style="display:none; flex-direction:column; height:100%; min-height:0;">
@@ -480,7 +480,7 @@
       </section>
     </main>
 
-    <footer class="app-footer">© 2026 NIKAIDO Works. All Rights Reserved. ・ v2.005</footer>
+    <footer class="app-footer">© 2026 NIKAIDO Works. All Rights Reserved. ・ v2.006</footer>
   </div>
 </div>
 
@@ -1588,6 +1588,40 @@ function drawWarpTriangle(ctx, img, dst, src) {
 
 function lerp2(p1, p2, t) { return [p1[0] + (p2[0] - p1[0]) * t, p1[1] + (p2[1] - p1[1]) * t]; }
 
+// 撮影時の影・照明のムラを均一化する（背景を大きくぼかした版で明るさを正規化）
+function correctShading(canvas) {
+  const w = canvas.width, h = canvas.height;
+  const ctx = canvas.getContext('2d');
+
+  const smallW = Math.max(8, Math.round(w / 24));
+  const smallH = Math.max(8, Math.round(h / 24));
+  const smallCanvas = document.createElement('canvas');
+  smallCanvas.width = smallW;
+  smallCanvas.height = smallH;
+  smallCanvas.getContext('2d').drawImage(canvas, 0, 0, smallW, smallH);
+
+  const bgCanvas = document.createElement('canvas');
+  bgCanvas.width = w;
+  bgCanvas.height = h;
+  const bgCtx = bgCanvas.getContext('2d');
+  bgCtx.imageSmoothingEnabled = true;
+  bgCtx.imageSmoothingQuality = 'high';
+  bgCtx.drawImage(smallCanvas, 0, 0, w, h);
+
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const bgData = bgCtx.getImageData(0, 0, w, h);
+  const d = imgData.data, bg = bgData.data;
+  const target = 245;
+  for (let i = 0; i < d.length; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      const bgVal = Math.max(bg[i + c], 20);
+      const v = d[i + c] * target / bgVal;
+      d[i + c] = v < 0 ? 0 : v > 255 ? 255 : v;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
 document.getElementById('skew-apply-btn').addEventListener('click', async () => {
   const rect = skewImageEl.getBoundingClientRect();
   const stageRect = skewStage.getBoundingClientRect();
@@ -1601,12 +1635,9 @@ document.getElementById('skew-apply-btn').addEventListener('click', async () => 
   const srcBR = toNatural(skewCorners.br);
   const srcBL = toNatural(skewCorners.bl);
 
-  const widthTop = Math.hypot(srcTR[0] - srcTL[0], srcTR[1] - srcTL[1]);
-  const widthBottom = Math.hypot(srcBR[0] - srcBL[0], srcBR[1] - srcBL[1]);
-  const heightLeft = Math.hypot(srcBL[0] - srcTL[0], srcBL[1] - srcTL[1]);
-  const heightRight = Math.hypot(srcBR[0] - srcTR[0], srcBR[1] - srcTR[1]);
-  const outW = Math.round(Math.max(widthTop, widthBottom));
-  const outH = Math.round(Math.max(heightLeft, heightRight));
+  // A4縦（210×297mm）の比率に固定
+  const outW = 1240;
+  const outH = Math.round(outW * 297 / 210);
 
   const img = await loadImageEl(skewImageEl.src);
   const canvas = document.createElement('canvas');
@@ -1630,6 +1661,8 @@ document.getElementById('skew-apply-btn').addEventListener('click', async () => 
       drawWarpTriangle(ctx, img, [d00, d11, d01], [s00, s11, s01]);
     }
   }
+
+  correctShading(canvas);
 
   canvas.toBlob((blob) => {
     const correctedFile = new File([blob], 'corrected.jpg', { type: 'image/jpeg' });
