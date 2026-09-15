@@ -479,11 +479,7 @@
       </section>
     </main>
 
-<<<<<<< Updated upstream
-    <footer class="app-footer">© 2026 NIKAIDO Works. All Rights Reserved. ・ v2.004</footer>
-=======
     <footer class="app-footer">© 2026 NIKAIDO Works. All Rights Reserved. ・ v2.005</footer>
->>>>>>> Stashed changes
   </div>
 </div>
 
@@ -493,12 +489,8 @@
 
 <div class="modal-overlay" id="skew-modal">
   <div style="background:var(--surface); border-radius:12px; padding:16px; max-width:480px; width:100%; max-height:90vh; display:flex; flex-direction:column;">
-<<<<<<< Updated upstream
-    <p style="font-family:var(--font-serif); font-size:15px; margin:0 0 8px;">四隅の点を、紙のふちに合わせてください</p>
-=======
     <p style="font-family:var(--font-serif); font-size:15px; margin:0 0 4px;">四隅の点を、紙のふちに合わせてください</p>
     <p id="skew-detect-status" style="font-size:12px; color:var(--text-muted); margin:0 0 8px;">自動検出中…</p>
->>>>>>> Stashed changes
     <div id="skew-stage" style="position:relative; touch-action:none; flex:1; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#00000010; border-radius:8px;">
       <img id="skew-image" style="max-width:100%; max-height:60vh; display:block; user-select:none; -webkit-user-drag:none;">
       <div class="skew-handle" data-corner="tl" style="position:absolute; width:26px; height:26px; margin:-13px; border-radius:50%; background:var(--accent); border:3px solid var(--surface); box-shadow:0 0 0 1px var(--accent); cursor:grab;"></div>
@@ -1416,8 +1408,6 @@ function updateSkewVisuals() {
   skewLinesPolygon.setAttribute('points', order.map(k => skewCorners[k].join(',')).join(' '));
 }
 
-<<<<<<< Updated upstream
-=======
 // ---- OpenCV.js（用紙の自動検出用） ----
 const cvReadyPromise = new Promise((resolve) => {
   const check = () => {
@@ -1507,7 +1497,6 @@ async function detectPaperCorners(imgEl) {
   }
 }
 
->>>>>>> Stashed changes
 correctSkewBtn.addEventListener('click', async () => {
   const file = selectedFiles[0];
   const dataUrl = await fileToDataUrl(file);
@@ -1516,11 +1505,6 @@ correctSkewBtn.addEventListener('click', async () => {
   skewNaturalHeight = img.naturalHeight;
   skewImageEl.src = dataUrl;
   skewModal.classList.add('open');
-<<<<<<< Updated upstream
-  requestAnimationFrame(() => {
-    ['tl', 'tr', 'br', 'bl'].forEach(c => { skewCorners[c] = skewHandlePos(c); });
-    updateSkewVisuals();
-=======
   aiReadStatus.style.display = 'none';
 
   requestAnimationFrame(async () => {
@@ -1548,7 +1532,6 @@ correctSkewBtn.addEventListener('click', async () => {
     } else {
       detectStatus.textContent = '自動検出できませんでした。点をドラッグして合わせてください';
     }
->>>>>>> Stashed changes
   });
 });
 
